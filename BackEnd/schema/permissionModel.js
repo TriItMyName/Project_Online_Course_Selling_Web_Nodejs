@@ -1,64 +1,86 @@
 const db = require('../config/db');
 
-// Lấy tất cả các permissions
-exports.getAllPermissions = (callback) => {
-    db.query('SELECT * FROM permissions', (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, results);
-    });
+const query = db.queryAsync;
+
+function toHttpError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+}
+
+function normalizePermission(row) {
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.PermissionID,
+        permissionName: row.PermissionName,
+        description: row.Description,
+    };
+}
+
+exports.getAllPermissions = async () => {
+    const rows = await query('SELECT * FROM permissions ORDER BY PermissionID DESC');
+    return rows.map(normalizePermission);
 };
 
-// Lấy thông tin permission theo ID
-exports.getPermissionById = (permissionId, callback) => {
-    db.query('SELECT * FROM permissions WHERE PermissionID = ?', [permissionId], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        if (results.length === 0) {
-            return callback(new Error('Permission không tồn tại'), null);
-        }
-        callback(null, results[0]);
-    });
+exports.getPermissionById = async (id) => {
+    const rows = await query('SELECT * FROM permissions WHERE PermissionID = ? LIMIT 1', [id]);
+    return rows.length ? normalizePermission(rows[0]) : null;
 };
 
-// Tạo một permission mới
-exports.createPermission = (permissionData, callback) => {
-    const { PermissionName, Description } = permissionData;
-    db.query(
+exports.createPermission = async (payload = {}) => {
+    const permissionName = String(payload.permissionName ?? payload.PermissionName ?? '').trim();
+    const description = String(payload.description ?? payload.Description ?? '').trim();
+
+    if (!permissionName) {
+        throw toHttpError(400, 'permissionName la bat buoc.');
+    }
+
+    const result = await query(
         'INSERT INTO permissions (PermissionName, Description) VALUES (?, ?)',
-        [PermissionName, Description],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            callback(null, { PermissionID: results.insertId, PermissionName, Description });
-        }
+        [permissionName, description]
     );
+
+    return exports.getPermissionById(result.insertId);
 };
 
-// Cập nhật thông tin permission
-exports.updatePermission = (permissionId, permissionData, callback) => {
-    const { PermissionName, Description } = permissionData;
-    db.query(
-        'UPDATE permissions SET PermissionName = ?, Description = ? WHERE PermissionID = ?',
-        [PermissionName, Description, permissionId],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            callback(null, { PermissionID: permissionId, PermissionName, Description });
+exports.updatePermission = async (id, payload = {}) => {
+    const safeId = Number(id);
+    const existed = await exports.getPermissionById(safeId);
+    if (!existed) {
+        return null;
+    }
+
+    const updates = [];
+    const params = [];
+
+    if (payload.permissionName != null || payload.PermissionName != null) {
+        const permissionName = String(payload.permissionName ?? payload.PermissionName ?? '').trim();
+        if (!permissionName) {
+            throw toHttpError(400, 'permissionName khong duoc de trong.');
         }
-    );
+        updates.push('PermissionName = ?');
+        params.push(permissionName);
+    }
+
+    if (payload.description != null || payload.Description != null) {
+        const description = String(payload.description ?? payload.Description ?? '').trim();
+        updates.push('Description = ?');
+        params.push(description);
+    }
+
+    if (!updates.length) {
+        throw toHttpError(400, 'Khong co du lieu de cap nhat.');
+    }
+
+    params.push(safeId);
+    await query(`UPDATE permissions SET ${updates.join(', ')} WHERE PermissionID = ?`, params);
+    return exports.getPermissionById(safeId);
 };
 
-// Xóa một permission
-exports.deletePermission = (permissionId, callback) => {
-    db.query('DELETE FROM permissions WHERE PermissionID = ?', [permissionId], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, { message: 'Permission đã được xóa thành công' });
-    });
+exports.deletePermission = async (id) => {
+    const result = await query('DELETE FROM permissions WHERE PermissionID = ?', [id]);
+    return result.affectedRows;
 };

@@ -53,11 +53,11 @@ function getUserStatus(user) {
 
 function isActiveUserStatus(status) {
     const normalized = String(status || '').trim().toLowerCase();
-    return normalized === 'hoat dong' || normalized === 'ho?t d?ng';
+    return normalized === 'hoat dong' || normalized === 'hoạt động';
 }
 
 function toUserStatusLabel(status) {
-    return isActiveUserStatus(status) ? 'Ho?t d?ng' : 'B? kh�a';
+    return isActiveUserStatus(status) ? 'Hoạt động' : 'Bị khóa';
 }
 
 function getUserCreateTime(user) {
@@ -85,8 +85,316 @@ function getOrderUserName(order) {
 }
 
 function statusLabelFromEnum(status) {
-    return status === 'SUCCESS' ? 'Da xu ly' : status === 'PENDING' ? 'Chua xu ly' : 'That bai';
+    return status === 'SUCCESS' ? 'Đã xử lý' : status === 'PENDING' ? 'Chưa xử lý' : 'That bai';
 }
+
+const ORDER_NOTIFY_POLLING_INTERVAL_MS = 10000;
+const ORDER_SOCKET_RETRY_INTERVAL_MS = 15000;
+const ORDER_NOTIFY_STORAGE_KEY = 'admin_seen_order_ids';
+const ORDER_NOTIFY_MAX_IDS = 500;
+let orderNotificationTimer = null;
+let hasInitializedOrderNotification = false;
+let knownOrderIds = new Set(loadSeenOrderIdsFromStorage());
+let orderSocket = null;
+let orderSocketReconnectTimer = null;
+let socketClientLoaderPromise = null;
+let isOrderSocketConnected = false;
+
+function normalizeOrderId(order) {
+    const rawId = getOrderId(order);
+    if (rawId === null || rawId === undefined) return null;
+    const normalizedId = String(rawId).trim();
+    return normalizedId ? normalizedId : null;
+}
+
+function collectOrderIdList(orders) {
+    const seen = new Set();
+    const ids = [];
+
+    (Array.isArray(orders) ? orders : []).forEach(order => {
+        const id = normalizeOrderId(order);
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        ids.push(id);
+    });
+
+    return ids;
+}
+
+function loadSeenOrderIdsFromStorage() {
+    try {
+        const raw = localStorage.getItem(ORDER_NOTIFY_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(item => String(item || '').trim()).filter(Boolean);
+    } catch (error) {
+        console.error('Loi khi doc danh sach don da xem:', error);
+        return [];
+    }
+}
+
+function saveSeenOrderIdsToStorage(ids) {
+    try {
+        const safeIds = Array.isArray(ids) ? ids.slice(-ORDER_NOTIFY_MAX_IDS) : [];
+        localStorage.setItem(ORDER_NOTIFY_STORAGE_KEY, JSON.stringify(safeIds));
+    } catch (error) {
+        console.error('Loi khi luu danh sach don da xem:', error);
+    }
+}
+
+function getOrderNotifyStatus(order) {
+    const status = getOrderStatus(order);
+    if (status === 'SUCCESS') return 'da thanh toan';
+    if (status === 'PENDING') return 'cho xu ly';
+    return 'co cap nhat moi';
+}
+
+function buildNewOrderNotifyMessage(newOrders) {
+    if (newOrders.length === 1) {
+        const order = newOrders[0];
+        const orderId = normalizeOrderId(order) || 'N/A';
+        const userName = getOrderUserName(order);
+        return `Don #${orderId} cua ${userName} vua duoc tao (${getOrderNotifyStatus(order)}).`;
+    }
+    return `Co ${newOrders.length} don hang moi vua duoc tao.`;
+}
+
+function notifyNewOrders(newOrders) {
+    if (!newOrders.length) return;
+    const message = buildNewOrderNotifyMessage(newOrders);
+    if (typeof toast === 'function') {
+        toast({ title: 'Thong bao', message, type: 'info', duration: 4000 });
+        return;
+    }
+    alert(message);
+}
+
+async function pollNewOrdersNotification() {
+    return syncOrdersForNotification({
+        notifyNewOrders: true,
+        refreshOrderTable: false,
+    });
+}
+
+async function syncOrdersForNotification(options = {}) {
+    const shouldNotifyNewOrders = options.notifyNewOrders !== false;
+    const refreshOrderTable = options.refreshOrderTable === true;
+
+    try {
+        const response = await fetch(apiUrl('/api/orders'));
+        if (!response.ok) {
+            console.error('Loi khi kiem tra don hang moi:', await response.text());
+            return [];
+        }
+
+        const orders = await response.json();
+        const safeOrders = Array.isArray(orders) ? orders : [];
+        const latestIds = collectOrderIdList(safeOrders);
+        const latestIdSet = new Set(latestIds);
+        const shouldBootstrap = !hasInitializedOrderNotification;
+        const shouldSuppressNotify = shouldBootstrap && knownOrderIds.size === 0;
+
+        if (shouldBootstrap) {
+            hasInitializedOrderNotification = true;
+        }
+
+        const newOrders = safeOrders.filter(order => {
+            const orderId = normalizeOrderId(order);
+            return orderId && !knownOrderIds.has(orderId);
+        });
+
+        if (shouldNotifyNewOrders && !shouldSuppressNotify) {
+            notifyNewOrders(newOrders);
+        }
+
+        knownOrderIds = latestIdSet;
+        saveSeenOrderIdsToStorage(latestIds);
+
+        if (refreshOrderTable) {
+            showOrder(safeOrders);
+        }
+
+        return safeOrders;
+    } catch (error) {
+        console.error('Loi khi polling don hang moi:', error);
+        return [];
+    }
+}
+
+function startOrderNotificationPolling() {
+    if (isOrderSocketConnected) {
+        return;
+    }
+
+    if (orderNotificationTimer) {
+        clearInterval(orderNotificationTimer);
+    }
+
+    pollNewOrdersNotification();
+    orderNotificationTimer = setInterval(pollNewOrdersNotification, ORDER_NOTIFY_POLLING_INTERVAL_MS);
+}
+
+function stopOrderNotificationPolling() {
+    if (!orderNotificationTimer) return;
+    clearInterval(orderNotificationTimer);
+    orderNotificationTimer = null;
+}
+
+function getSocketServerOrigin() {
+    try {
+        return new URL(API_BASE).origin;
+    } catch (error) {
+        return 'http://localhost:3000';
+    }
+}
+
+function clearSocketReconnectTimer() {
+    if (!orderSocketReconnectTimer) {
+        return;
+    }
+
+    clearTimeout(orderSocketReconnectTimer);
+    orderSocketReconnectTimer = null;
+}
+
+function scheduleOrderSocketReconnect() {
+    if (orderSocketReconnectTimer || isOrderSocketConnected) {
+        return;
+    }
+
+    orderSocketReconnectTimer = setTimeout(() => {
+        orderSocketReconnectTimer = null;
+        initOrderRealtimeSocket();
+    }, ORDER_SOCKET_RETRY_INTERVAL_MS);
+}
+
+function loadSocketClientScript() {
+    if (typeof window.io === 'function') {
+        return Promise.resolve(window.io);
+    }
+
+    if (socketClientLoaderPromise) {
+        return socketClientLoaderPromise;
+    }
+
+    const socketClientScriptUrl = `${getSocketServerOrigin()}/socket.io/socket.io.js`;
+    socketClientLoaderPromise = new Promise((resolve, reject) => {
+        const existingScript = Array.from(document.querySelectorAll('script')).find(
+            script => script.src === socketClientScriptUrl
+        );
+
+        if (existingScript) {
+            existingScript.addEventListener('load', () => resolve(window.io));
+            existingScript.addEventListener('error', () => reject(new Error('Khong tai duoc socket.io client script.')));
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = socketClientScriptUrl;
+        script.async = true;
+        script.onload = () => resolve(window.io);
+        script.onerror = () => reject(new Error('Khong tai duoc socket.io client script.'));
+        document.head.appendChild(script);
+    });
+
+    return socketClientLoaderPromise;
+}
+
+function stopOrderRealtimeSocket() {
+    clearSocketReconnectTimer();
+    if (!orderSocket) {
+        isOrderSocketConnected = false;
+        return;
+    }
+
+    orderSocket.removeAllListeners();
+    orderSocket.disconnect();
+    orderSocket = null;
+    isOrderSocketConnected = false;
+}
+
+async function handleOrderSocketCreated() {
+    await syncOrdersForNotification({
+        notifyNewOrders: true,
+        refreshOrderTable: true,
+    });
+    updateDashboard();
+}
+
+async function handleOrderSocketUpdated() {
+    await showOrder();
+    updateDashboard();
+}
+
+async function handleOrderSocketDeleted() {
+    await showOrder();
+    updateDashboard();
+}
+
+async function initOrderRealtimeSocket() {
+    try {
+        await loadSocketClientScript();
+        if (typeof window.io !== 'function') {
+            throw new Error('window.io khong kha dung.');
+        }
+
+        clearSocketReconnectTimer();
+        if (orderSocket) {
+            orderSocket.removeAllListeners();
+            orderSocket.disconnect();
+        }
+
+        orderSocket = window.io(getSocketServerOrigin(), {
+            transports: ['websocket', 'polling'],
+            reconnection: false,
+        });
+
+        orderSocket.on('connect', async () => {
+            isOrderSocketConnected = true;
+            stopOrderNotificationPolling();
+            await syncOrdersForNotification({
+                notifyNewOrders: false,
+                refreshOrderTable: true,
+            });
+        });
+
+        orderSocket.on('disconnect', () => {
+            isOrderSocketConnected = false;
+            startOrderNotificationPolling();
+            scheduleOrderSocketReconnect();
+        });
+
+        orderSocket.on('connect_error', (error) => {
+            console.error('Socket connect_error:', error);
+            isOrderSocketConnected = false;
+            startOrderNotificationPolling();
+            scheduleOrderSocketReconnect();
+        });
+
+        orderSocket.on('orders:created', () => {
+            handleOrderSocketCreated();
+        });
+
+        orderSocket.on('orders:updated', () => {
+            handleOrderSocketUpdated();
+        });
+
+        orderSocket.on('orders:deleted', () => {
+            handleOrderSocketDeleted();
+        });
+    } catch (error) {
+        console.error('Khong the khoi tao realtime order socket:', error);
+        isOrderSocketConnected = false;
+        startOrderNotificationPolling();
+        scheduleOrderSocketReconnect();
+    }
+}
+
+window.addEventListener('beforeunload', () => {
+    stopOrderNotificationPolling();
+    stopOrderRealtimeSocket();
+});
 
 //do sidebar open and close
 const menuIconButton = document.querySelector(".menu-icon-btn");
@@ -371,7 +679,7 @@ async function showcategorie() {
         const response = await fetch(apiUrl('/api/categories'));
         if (response.ok) {
             const categories = await response.json();
-            let options = '<option value="">Tat ca</option>';
+            let options = '<option value="">Tất cả</option>';
             categories.forEach(category => {
                 options += `<option value="${getCategoryId(category)}">${getCategoryName(category)}</option>`;
             });
@@ -459,7 +767,6 @@ async function cancelSearchcategorie() {
 
 async function cancelSearchCourses() {
     try {
-        // Dat gia tr9 cua dropdown ve mac 9nh (Tat ca)
         document.getElementById("chon-mon-select").value = "";
 
         // Xoa tu khoa tim kiem trong o input
@@ -567,11 +874,11 @@ function renderLessonList() {
             <thead>
                 <tr>
                     <td>STT</td>
-                    <td>Ten bai hoc</td>
-                    <td>Tep video</td>
-                    <td>Thoi luong</td>
-                    <td>Trang thai</td>
-                    <td>Thao tac</td>
+                    <td>Tên bài học</td>
+                    <td>Tệp video</td>
+                    <td>Thời lượng</td>
+                    <td>Trạng thái</td>
+                    <td>Thao tác</td>
                 </tr>
             </thead>
             <tbody>
@@ -658,7 +965,7 @@ async function savePendingLessons(courseId) {
 
         if (!response.ok) {
             const text = await response.text();
-            throw new Error(`Khong the them bai hoc \"${lesson.lessonTitle}\": ${text}`);
+            throw new Error(`Không thể thêm bài học \"${lesson.lessonTitle}\": ${text}`);
         }
 
         orderIndex += 1;
@@ -717,12 +1024,12 @@ async function handleAddLessonRow() {
 
     const lessonTitle = titleInput.value.trim();
     if (!lessonTitle) {
-        alert('Vui long nhap ten bai hoc.');
+        alert('Vui lòng nhập tên bài học.');
         return;
     }
 
     if (lessonTitleExists(lessonTitle)) {
-        alert('Ten bai hoc da ton tai trong khoa hoc nay.');
+        alert('Tên bài học đã tồn tại trong khóa học này.');
         return;
     }
 
@@ -730,12 +1037,12 @@ async function handleAddLessonRow() {
     const duration = Number(durationInput.value || 0);
 
     if (!file) {
-        alert('Vui long chon tep video.');
+        alert('Vui lòng chọn tập tin video.');
         return;
     }
 
     if (!duration) {
-        alert('Vui long chon tep video de he thong tinh thoi luong.');
+        alert('Vui lòng chọn tập tin video để hệ thống tính thời lượng.');
         return;
     }
 
@@ -768,7 +1075,7 @@ if (lessonVideoFileInput) {
             durationInput.value = String(duration);
         } catch (error) {
             console.error(error);
-            alert('Khong the doc thoi luong video, vui long thu tep khac.');
+            alert('Không thể đọc thời lượng video, vui lòng thử tập tin khác.');
         }
     });
 }
@@ -793,26 +1100,26 @@ if (lessonListContainer) {
 
 // Xoa san pham 
 async function deletecategorie(id) {
-    console.log("ID khoa hoc can xoa:", id); // Kiem tra ID
+    console.log("ID khóa học cần xóa:", id); // Kiem tra ID
     if (!id) {
-        console.error("ID khong hop le.");
+        console.error("ID không hợp lệ.");
         return;
     }
 
-    if (confirm("Ban co chac muon xoa?")) {
+    if (confirm("Bạn có chắc muốn xóa?")) {
         try {
             const response = await fetch(apiUrl(`/api/courses/${id}`), {
                 method: 'DELETE',
             });
 
             if (response.ok) {
-                toast({ title: 'Success', message: 'Xoa khoa hoc thanh cong!', type: 'success', duration: 3000 });
-                showcourses(); // Lam moi danh sach khoa hoc
+                toast({ title: 'Success', message: 'Xóa khóa học thành công!', type: 'success', duration: 3000 });
+                showcourses(); // Làm mới danh sách khóa học
             } else {
-                console.error('Loi khi xoa khoa hoc:', await response.text());
+                console.error('Lỗi khi xóa khóa học:', await response.text());
             }
         } catch (error) {
-            console.error('Loi khi goi API:', error);
+            console.error('Lỗi khi gọi API:', error);
         }
     }
 }
@@ -862,7 +1169,7 @@ btnUpdatecategorieIn.addEventListener("click", async (e) => {
     e.preventDefault();
 
     if (!indexCur) {
-        console.error("Khong tim thay ID cua khoa hoc can cap nhat.");
+        console.error("Không tìm thấy ID của khóa học cần cập nhật.");
         return;
     }
 
@@ -896,27 +1203,27 @@ btnUpdatecategorieIn.addEventListener("click", async (e) => {
                 await savePendingLessons(indexCur);
             } catch (lessonError) {
                 console.error(lessonError);
-                alert('Cap nhat khoa hoc thanh cong nhung them bai hoc that bai. Vui long kiem tra lai.');
+                alert('Cập nhật khóa học thành công nhưng thêm bài học thất bại. Vui lòng kiểm tra lại.');
             }
 
-            toast({ title: 'Success', message: 'Cap nhat khoa hoc thanh cong!', type: 'success', duration: 3000 });
+            toast({ title: 'Success', message: 'Cập nhật khóa học thành công!', type: 'success', duration: 3000 });
             showcourses();
 
             // Dong modal chinh sua
             document.querySelector(".add-categorie").classList.remove("open");
             setDefaultValue();
         } else {
-            console.error('Loi khi cap nhat khoa hoc:', await response.text());
+            console.error('Lỗi khi cập nhật khóa học:', await response.text());
         }
     } catch (error) {
-        console.error('Loi khi goi API:', error);
+        console.error('Lỗi khi gọi API:', error);
     }
 });
 
 // Ham lay duong dan anh tu thuoc tinh src
 function getPathImage(src) {
     if (!src) {
-        console.error("Duong dan anh khong hop le.");
+        console.error("Đường dẫn ảnh không hợp lệ.");
         return "";
     }
     return src;
@@ -948,19 +1255,19 @@ async function addNewCourse() {
                     await savePendingLessons(createdCourseId);
                 } catch (lessonError) {
                     console.error(lessonError);
-                    alert('Them khoa hoc thanh cong nhung them bai hoc that bai. Vui long kiem tra lai.');
+                    alert('Thêm khóa học thành công nhưng thêm bài học thất bại. Vui lòng kiểm tra lại.');
                 }
             }
 
-            toast({ title: 'Success', message: 'Them khoa hoc thanh cong!', type: 'success', duration: 3000 });
+            toast({ title: 'Success', message: 'Thêm khóa học thành công!', type: 'success', duration: 3000 });
             showcourses(); // Lam moi danh sach khoa hoc
             document.querySelector(".add-categorie").classList.remove("open"); // Dong modal them khoa hoc
             setDefaultValue(); // Dat lai gia tri mac dinh cho form
         } else {
-            console.error('Loi khi them khoa hoc:', await response.text());
+            console.error('Lỗi khi thêm khóa học:', await response.text());
         }
     } catch (error) {
-        console.error('Loi khi goi API:', error);
+        console.error('Lỗi khi goi API:', error);
     }
 }
 
@@ -1335,7 +1642,7 @@ document.getElementById("logout-acc").addEventListener('click', (e) => {
 async function changeStatus(id, el) {
     try {
         const currentStatus = el.innerHTML.trim();
-        const newStatus = currentStatus.includes("Chua xu ly") ? "SUCCESS" : "PENDING";
+        const newStatus = currentStatus.includes("Chưa xử lý") ? "SUCCESS" : "PENDING";
 
         const currentOrderResponse = await fetch(apiUrl(`/api/orders/${id}`));
         if (!currentOrderResponse.ok) {
@@ -1362,7 +1669,7 @@ async function changeStatus(id, el) {
                 el.classList.remove("btn-daxuly");
                 el.classList.add("btn-chuaxuly");
             }
-            el.innerHTML = newStatus === "SUCCESS" ? "Da xu ly" : "Chua xu ly";
+            el.innerHTML = newStatus === "SUCCESS" ? "Đã xử lý" : "Chưa xử lý";
             toast({ title: 'Success', message: 'Cap nhat trang thai thanh cong!', type: 'success', duration: 3000 });
             showOrder();
         } else {
@@ -1412,8 +1719,8 @@ async function showOrder(existingOrders = null) {
                     const statusEnum = getOrderStatus(item);
                     const isDone = statusEnum === 'SUCCESS';
                     let status = isDone
-                        ? `<span class="status-complete">Da xu ly</span>`
-                        : `<span class="status-no-complete">Chua xu ly</span>`;
+                        ? `<span class="status-complete">Đã xử lý</span>`
+                        : `<span class="status-no-complete">Chưa xử lý</span>`;
                     let date = formatDate(getOrderDate(item));
                     let userName = getOrderUserName(item);
                     const orderId = getOrderId(item);
@@ -1537,7 +1844,7 @@ async function detailOrder(id) {
 
             const orderStatus = getOrderStatus(order);
             let classDetailBtn = orderStatus === "SUCCESS" ? "btn-daxuly" : "btn-chuaxuly";
-            let textDetailBtn = orderStatus === "SUCCESS" ? "Da xu ly" : "Chua xu ly";
+            let textDetailBtn = orderStatus === "SUCCESS" ? "Đã xử lý" : "Chưa xử lý";
             document.querySelector(".modal-detail-bottom").innerHTML = `
             <div class="modal-detail-bottom-left">
                 <div class="price-total">
@@ -1746,6 +2053,8 @@ window.onload = async function () {
     showUser();
     showOrder();
     thongKe();
+    startOrderNotificationPolling();
+    initOrderRealtimeSocket();
 };
 
 

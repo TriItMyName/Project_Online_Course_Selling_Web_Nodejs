@@ -4,6 +4,74 @@ const { signToken } = require('../middleware/auth');
 const query = db.queryAsync;
 const withTransaction = db.withTransaction;
 
+const USER_ROLE_TABLE_CANDIDATES = ['userrole', 'userroles', 'user_role'];
+let cachedUserRoleTable = null;
+
+async function execRows(sql, params = [], conn = null) {
+  if (conn) {
+    const [rows] = await conn.query(sql, params);
+    return rows;
+  }
+  return query(sql, params);
+}
+
+function validateUserRoleTableName(tableName) {
+  if (!USER_ROLE_TABLE_CANDIDATES.includes(tableName) && tableName !== 'userrole') {
+    throw new Error('Ten bang user-role khong hop le.');
+  }
+  return tableName;
+}
+
+async function findUserRoleTable(conn = null) {
+  const placeholders = USER_ROLE_TABLE_CANDIDATES.map(() => '?').join(', ');
+  const rows = await execRows(
+    `SELECT TABLE_NAME
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN (${placeholders})
+     ORDER BY FIELD(TABLE_NAME, ${placeholders})
+     LIMIT 1`,
+    [...USER_ROLE_TABLE_CANDIDATES, ...USER_ROLE_TABLE_CANDIDATES],
+    conn
+  );
+
+  return rows[0]?.TABLE_NAME || null;
+}
+
+async function createUserRoleTable(conn = null) {
+  await execRows(
+    `CREATE TABLE IF NOT EXISTS userrole (
+      UserID INT NOT NULL,
+      RoleID INT NOT NULL,
+      PRIMARY KEY (UserID, RoleID),
+      KEY idx_userrole_roleid (RoleID),
+      CONSTRAINT fk_userrole_user FOREIGN KEY (UserID) REFERENCES users(UserID)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+      CONSTRAINT fk_userrole_role FOREIGN KEY (RoleID) REFERENCES roles(RoleID)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    [],
+    conn
+  );
+}
+
+async function resolveUserRoleTable(conn = null) {
+  if (cachedUserRoleTable) {
+    return validateUserRoleTableName(cachedUserRoleTable);
+  }
+
+  let tableName = await findUserRoleTable(conn);
+  if (!tableName) {
+    await createUserRoleTable(conn);
+    tableName = 'userrole';
+  }
+
+  cachedUserRoleTable = validateUserRoleTableName(tableName);
+  return cachedUserRoleTable;
+}
+
 function normalizeUser(row) {
   return {
     id: row.UserID,
@@ -32,6 +100,8 @@ exports.register = async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const created = await withTransaction(async (conn) => {
+      const userRoleTable = await resolveUserRoleTable(conn);
+
       const [insertUser] = await conn.query(
         'INSERT INTO users (UserName, Email, Password, Status, CreateTime) VALUES (?, ?, ?, ?, NOW())',
         [username, email, hashedPassword, 'Hoat dong']
@@ -49,7 +119,7 @@ exports.register = async (req, res, next) => {
         roleId = insertRole.insertId;
       }
 
-      await conn.query('INSERT INTO userrole (UserID, RoleID) VALUES (?, ?)', [userId, roleId]);
+      await conn.query(`INSERT INTO ${userRoleTable} (UserID, RoleID) VALUES (?, ?)`, [userId, roleId]);
       return { userId, roleId };
     });
 
@@ -76,10 +146,12 @@ exports.checkLogin = async (req, res, next) => {
       return res.status(400).json({ message: 'Email va mat khau la bat buoc.' });
     }
 
+     const userRoleTable = await resolveUserRoleTable();
+
     const rows = await query(
       `SELECT u.UserID, u.UserName, u.Email, u.Password, u.Status, r.RoleName
        FROM users u
-       LEFT JOIN userrole ur ON ur.UserID = u.UserID
+       LEFT JOIN ${userRoleTable} ur ON ur.UserID = u.UserID
        LEFT JOIN roles r ON r.RoleID = ur.RoleID
        WHERE u.Email = ?
        LIMIT 1`,
@@ -124,10 +196,12 @@ exports.checkLogin = async (req, res, next) => {
 
 exports.countNonAdmins = async (_req, res, next) => {
   try {
+    const userRoleTable = await resolveUserRoleTable();
+
     const rows = await query(
       `SELECT COUNT(*) AS count
        FROM users u
-       LEFT JOIN userrole ur ON ur.UserID = u.UserID
+       LEFT JOIN ${userRoleTable} ur ON ur.UserID = u.UserID
        LEFT JOIN roles r ON r.RoleID = ur.RoleID
        WHERE IFNULL(r.RoleName, 'Student') <> 'Admin'`
     );

@@ -1,21 +1,90 @@
 const express = require('express');
 const userRoleController = require('../controllers/userroleController');
+const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
 
-// Route để lấy danh sách tất cả các user-role
-router.get('/userroles', userRoleController.getAllUserRoles);
+router.get('/userroles', async (_req, res, next) => {
+	try {
+		const userRoles = await userRoleController.GetAllUserRoles();
+		return res.json(userRoles);
+	} catch (error) {
+		return next(error);
+	}
+});
 
-// Route để lấy thông tin user-role theo UserID và RoleID
-router.get('/userroles/:userId/:roleId', userRoleController.getUserRoleById);
+router.get(
+	'/userroles/:userId/:roleId',
+	validatePositiveIntParam('userId', 'userId'),
+	validatePositiveIntParam('roleId', 'roleId'),
+	async (req, res, next) => {
+		try {
+			const userId = req.validated?.userId ?? Number(req.params.userId);
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const userRole = await userRoleController.FindUserRoleById(userId, roleId);
 
-// Route để tạo một user-role mới
-router.post('/userroles', userRoleController.createUserRole);
+			if (!userRole) {
+				return res.status(404).json({ message: 'UserRole khong ton tai.' });
+			}
 
-// Route để cập nhật thông tin user-role
-router.put('/userroles/:userId/:roleId', userRoleController.updateUserRole);
+			return res.json(userRole);
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
 
-// Route để xóa một user-role
-router.delete('/userroles/:userId/:roleId', userRoleController.deleteUserRole);
+router.post('/userroles', async (req, res, next) => {
+	try {
+		const payload = req.body || {};
+		const userRole = await userRoleController.CreateUserRole(payload);
+		return res.status(201).json(userRole);
+	} catch (error) {
+		return next(error);
+	}
+});
+
+router.put(
+	'/userroles/:userId/:roleId',
+	validatePositiveIntParam('userId', 'userId'),
+	validatePositiveIntParam('roleId', 'roleId'),
+	async (req, res, next) => {
+		try {
+			const userId = req.validated?.userId ?? Number(req.params.userId);
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const payload = req.body || {};
+			const updatedUserRole = await userRoleController.ModifyUserRole(userId, roleId, payload);
+
+			if (!updatedUserRole) {
+				return res.status(404).json({ message: 'UserRole khong ton tai.' });
+			}
+
+			return res.json(updatedUserRole);
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
+
+router.delete(
+	'/userroles/:userId/:roleId',
+	validatePositiveIntParam('userId', 'userId'),
+	validatePositiveIntParam('roleId', 'roleId'),
+	async (req, res, next) => {
+		try {
+			const userId = req.validated?.userId ?? Number(req.params.userId);
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const deletedCount = await userRoleController.DeleteUserRole(userId, roleId);
+
+			if (!deletedCount) {
+				return res.status(404).json({ message: 'UserRole khong ton tai.' });
+			}
+
+			return res.json({ message: 'Xoa user-role thanh cong.' });
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
 
 module.exports = router;

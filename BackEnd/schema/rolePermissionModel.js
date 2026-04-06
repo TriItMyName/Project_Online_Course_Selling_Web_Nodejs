@@ -1,72 +1,71 @@
 const db = require('../config/db');
 
-// Lấy tất cả các role-permission
-exports.getAllRolePermissions = (callback) => {
-    db.query('SELECT * FROM rolepermissions', (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, results);
-    });
+const query = db.queryAsync;
+
+function toHttpError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+}
+
+function normalizeRolePermission(row) {
+    if (!row) {
+        return null;
+    }
+
+    return {
+        roleId: row.RoleID,
+        permissionId: row.PermissionID,
+    };
+}
+
+function parsePositiveInt(value, fieldName) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw toHttpError(400, `${fieldName} khong hop le.`);
+    }
+    return parsed;
+}
+
+exports.getAllRolePermissions = async () => {
+    const rows = await query('SELECT * FROM rolepermissions ORDER BY RoleID DESC, PermissionID DESC');
+    return rows.map(normalizeRolePermission);
 };
 
-// Lấy thông tin role-permission theo RoleID và PermissionID
-exports.getRolePermissionById = (roleId, permissionId, callback) => {
-    db.query(
-        'SELECT * FROM rolepermissions WHERE RoleID = ? AND PermissionID = ?',
-        [roleId, permissionId],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            if (results.length === 0) {
-                return callback(new Error('RolePermission không tồn tại'), null);
-            }
-            callback(null, results[0]);
-        }
+exports.getRolePermissionById = async (roleId, permissionId) => {
+    const rows = await query(
+        'SELECT * FROM rolepermissions WHERE RoleID = ? AND PermissionID = ? LIMIT 1',
+        [roleId, permissionId]
     );
+    return rows.length ? normalizeRolePermission(rows[0]) : null;
 };
 
-// Tạo một role-permission mới
-exports.createRolePermission = (rolePermissionData, callback) => {
-    const { RoleID, PermissionID } = rolePermissionData;
-    db.query(
-        'INSERT INTO rolepermissions (RoleID, PermissionID) VALUES (?, ?)',
-        [RoleID, PermissionID],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            callback(null, { RoleID, PermissionID });
-        }
-    );
+exports.createRolePermission = async (payload = {}) => {
+    const roleId = parsePositiveInt(payload.roleId ?? payload.RoleID, 'roleId');
+    const permissionId = parsePositiveInt(payload.permissionId ?? payload.PermissionID, 'permissionId');
+
+    await query('INSERT INTO rolepermissions (RoleID, PermissionID) VALUES (?, ?)', [roleId, permissionId]);
+    return exports.getRolePermissionById(roleId, permissionId);
 };
 
-// Cập nhật thông tin role-permission
-exports.updateRolePermission = (roleId, permissionId, rolePermissionData, callback) => {
-    const { newRoleID, newPermissionID } = rolePermissionData;
-    db.query(
+exports.updateRolePermission = async (roleId, permissionId, payload = {}) => {
+    const existed = await exports.getRolePermissionById(roleId, permissionId);
+    if (!existed) {
+        return null;
+    }
+
+    const newRoleId = parsePositiveInt(payload.newRoleID ?? payload.roleId ?? payload.RoleID, 'roleId');
+    const newPermissionId = parsePositiveInt(payload.newPermissionID ?? payload.permissionId ?? payload.PermissionID, 'permissionId');
+
+    await query(
         'UPDATE rolepermissions SET RoleID = ?, PermissionID = ? WHERE RoleID = ? AND PermissionID = ?',
-        [newRoleID, newPermissionID, roleId, permissionId],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            callback(null, { RoleID: newRoleID, PermissionID: newPermissionID });
-        }
+        [newRoleId, newPermissionId, roleId, permissionId]
     );
+
+    return exports.getRolePermissionById(newRoleId, newPermissionId);
 };
 
-// Xóa một role-permission
-exports.deleteRolePermission = (roleId, permissionId, callback) => {
-    db.query(
-        'DELETE FROM rolepermissions WHERE RoleID = ? AND PermissionID = ?',
-        [roleId, permissionId],
-        (err, results) => {
-            if (err) {
-                return callback(err, null);
-            }
-            callback(null, { message: 'RolePermission đã được xóa thành công' });
-        }
-    );
+exports.deleteRolePermission = async (roleId, permissionId) => {
+    const result = await query('DELETE FROM rolepermissions WHERE RoleID = ? AND PermissionID = ?', [roleId, permissionId]);
+    return result.affectedRows;
 };

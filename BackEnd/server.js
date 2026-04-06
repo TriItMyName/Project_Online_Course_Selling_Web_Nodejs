@@ -1,10 +1,13 @@
 require('dotenv').config(); // if you use .env
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
 const morgan = require('morgan');
 const { optionalAuth } = require('./middleware/auth');
+const { setSocketServer } = require('./utils/socket');
 
 const userRoutes = require('./routes/userRoutes');
 const roleRoutes = require('./routes/roleRoutes');
@@ -34,9 +37,25 @@ function getLocalIPv4() {
   return '127.0.0.1';
 }
 const app = express();
+const httpServer = http.createServer(app);
 const port = process.env.PORT || 3000;
 const hostname = getLocalIPv4();
 const SECRET_KEY = process.env.SECRET_KEY || 'tri16102004';
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  },
+});
+
+setSocketServer(io);
+
+io.on('connection', (socket) => {
+  socket.on('disconnect', () => {
+    // Intentionally kept silent to avoid noisy logs in development.
+  });
+});
 
 app.use(cors({
   // origin: 'http://your-allowed-origin', // restrict in production
@@ -73,10 +92,12 @@ app.get('/api/ping', (req, res) => {
 // Global error handler (example)
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  const status = err.status || 500;
+  const message = err.message || 'Internal server error';
+  res.status(status).json({ message, error: message });
 });
 
 // Chạy server
-app.listen(port, '0.0.0.0', () => {
+httpServer.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://${hostname}:${port} (listening on 0.0.0.0:${port})`);
 });

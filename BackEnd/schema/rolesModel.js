@@ -1,56 +1,61 @@
-const db = require('../config/db'); // Kết nối cơ sở dữ liệu
+const db = require('../config/db');
 
-// Lấy tất cả vai trò
-exports.getAllRoles = (callback) => {
-    db.query('SELECT * FROM roles', (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, results);
-    });
+const query = db.queryAsync;
+
+function toHttpError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
 }
 
-// Lấy thông tin vai trò theo ID
-exports.getRoleById = (roleId, callback) => {
-    db.query('SELECT * FROM roles WHERE RoleID = ?', [roleId], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        if (results.length === 0) {
-            return callback(new Error('Role not found'), null);
-        }
-        callback(null, results[0]);
-    });
+function normalizeRole(row) {
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.RoleID,
+        roleName: row.RoleName,
+    };
 }
 
-// Tạo vai trò mới
-exports.createRole = (roleData, callback) => {
-    const { RoleName } = roleData;
-    db.query('INSERT INTO roles (RoleName) VALUES (?)', [RoleName], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, { RoleID: results.insertId, RoleName });
-    });
-}
+exports.getAllRoles = async () => {
+    const rows = await query('SELECT * FROM roles ORDER BY RoleID DESC');
+    return rows.map(normalizeRole);
+};
 
-// Cập nhật thông tin vai trò
-exports.updateRole = (roleId, roleData, callback) => {
-    const { RoleName } = roleData;
-    db.query('UPDATE roles SET RoleName = ? WHERE RoleID = ?', [RoleName, roleId], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, { RoleID: results.insertId, RoleName });
-    });
-}
+exports.getRoleById = async (id) => {
+    const rows = await query('SELECT * FROM roles WHERE RoleID = ? LIMIT 1', [id]);
+    return rows.length ? normalizeRole(rows[0]) : null;
+};
 
-// Xóa vai trò
-exports.deleteRole = (roleId, callback) => {
-    db.query('DELETE FROM roles WHERE RoleID = ?', [roleId], (err, results) => {
-        if (err) {
-            return callback(err, null);
-        }
-        callback(null, { message: 'Role deleted successfully' });
-    });
-}
+exports.createRole = async (payload = {}) => {
+    const roleName = String(payload.roleName ?? payload.RoleName ?? '').trim();
+    if (!roleName) {
+        throw toHttpError(400, 'roleName la bat buoc.');
+    }
+
+    const result = await query('INSERT INTO roles (RoleName) VALUES (?)', [roleName]);
+    return exports.getRoleById(result.insertId);
+};
+
+exports.updateRole = async (id, payload = {}) => {
+    const safeId = Number(id);
+    const existed = await exports.getRoleById(safeId);
+    if (!existed) {
+        return null;
+    }
+
+    const roleName = String(payload.roleName ?? payload.RoleName ?? '').trim();
+    if (!roleName) {
+        throw toHttpError(400, 'roleName khong duoc de trong.');
+    }
+
+    await query('UPDATE roles SET RoleName = ? WHERE RoleID = ?', [roleName, safeId]);
+    return exports.getRoleById(safeId);
+};
+
+exports.deleteRole = async (id) => {
+    const result = await query('DELETE FROM roles WHERE RoleID = ?', [id]);
+    return result.affectedRows;
+};

@@ -1,59 +1,21 @@
 const rolePermissionModel = require('../schema/rolePermissionModel');
 
-// Lấy tất cả các role-permission
-exports.getAllRolePermissions = (req, res) => {
-    rolePermissionModel.getAllRolePermissions((err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Lỗi server', error: err });
-        }
-        res.json(results);
-    });
+exports.GetAllRolePermissions = async () => {
+    return rolePermissionModel.getAllRolePermissions();
 };
 
-// Lấy thông tin role-permission theo RoleID và PermissionID
-exports.getRolePermissionById = (req, res) => {
-    const { roleId, permissionId } = req.params;
-    rolePermissionModel.getRolePermissionById(roleId, permissionId, (err, result) => {
-        if (err) {
-            return res.status(500).json({ message: 'Lỗi server', error: err });
-        }
-        if (!result) {
-            return res.status(404).json({ message: 'RolePermission không tồn tại' });
-        }
-        res.json(result);
-    });
+exports.FindRolePermissionById = async (roleId, permissionId) => {
+    return rolePermissionModel.getRolePermissionById(roleId, permissionId);
 };
 
-// Tạo một role-permission mới
-exports.createRolePermission = (req, res) => {
-    const rolePermissionData = req.body;
-    rolePermissionModel.createRolePermission(rolePermissionData, (err, result) => {
-        if (err) {
-            return res.status(500).json({ message: 'Lỗi server', error: err });
-        }
-        res.status(201).json(result);
-    });
+exports.CreateRolePermission = async (payload) => {
+    return rolePermissionModel.createRolePermission(payload);
 };
 
-// Cập nhật thông tin role-permission
-exports.updateRolePermission = (req, res) => {
-    const { roleId, permissionId } = req.params;
-    const rolePermissionData = req.body;
-    rolePermissionModel.updateRolePermission(roleId, permissionId, rolePermissionData, (err, result) => {
-        if (err) {
-            return res.status(500).json({ message: 'Lỗi server', error: err });
-        }
-        res.json(result);
-    });
+exports.ModifyRolePermission = async (roleId, permissionId, payload) => {
+    return rolePermissionModel.updateRolePermission(roleId, permissionId, payload);
 };
 
-// Xóa một role-permission
-exports.deleteRolePermission = (req, res) => {
-    const { roleId, permissionId } = req.params;
-    rolePermissionModel.deleteRolePermission(roleId, permissionId, (err, result) => {
-        if (err) {
-            return res.status(500).json({ message: 'Lỗi server', error: err });
-        }
-        res.json(result);
-    });
+exports.DeleteRolePermission = async (roleId, permissionId) => {
+    return rolePermissionModel.deleteRolePermission(roleId, permissionId);
 };

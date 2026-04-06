@@ -1,21 +1,90 @@
 const express = require('express');
 const rolePermissionController = require('../controllers/rolePermissionController');
+const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
 
-// Route để lấy danh sách tất cả các role-permissions
-router.get('/rolepermissions', rolePermissionController.getAllRolePermissions);
+router.get('/rolepermissions', async (_req, res, next) => {
+	try {
+		const rolePermissions = await rolePermissionController.GetAllRolePermissions();
+		return res.json(rolePermissions);
+	} catch (error) {
+		return next(error);
+	}
+});
 
-// Route để lấy thông tin role-permission theo RoleID và PermissionID
-router.get('/rolepermissions/:roleId/:permissionId', rolePermissionController.getRolePermissionById);
+router.get(
+	'/rolepermissions/:roleId/:permissionId',
+	validatePositiveIntParam('roleId', 'roleId'),
+	validatePositiveIntParam('permissionId', 'permissionId'),
+	async (req, res, next) => {
+		try {
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const permissionId = req.validated?.permissionId ?? Number(req.params.permissionId);
+			const rolePermission = await rolePermissionController.FindRolePermissionById(roleId, permissionId);
 
-// Route để tạo một role-permission mới
-router.post('/rolepermissions', rolePermissionController.createRolePermission);
+			if (!rolePermission) {
+				return res.status(404).json({ message: 'RolePermission khong ton tai.' });
+			}
 
-// Route để cập nhật thông tin role-permission
-router.put('/rolepermissions/:roleId/:permissionId', rolePermissionController.updateRolePermission);
+			return res.json(rolePermission);
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
 
-// Route để xóa một role-permission
-router.delete('/rolepermissions/:roleId/:permissionId', rolePermissionController.deleteRolePermission);
+router.post('/rolepermissions', async (req, res, next) => {
+	try {
+		const payload = req.body || {};
+		const rolePermission = await rolePermissionController.CreateRolePermission(payload);
+		return res.status(201).json(rolePermission);
+	} catch (error) {
+		return next(error);
+	}
+});
+
+router.put(
+	'/rolepermissions/:roleId/:permissionId',
+	validatePositiveIntParam('roleId', 'roleId'),
+	validatePositiveIntParam('permissionId', 'permissionId'),
+	async (req, res, next) => {
+		try {
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const permissionId = req.validated?.permissionId ?? Number(req.params.permissionId);
+			const payload = req.body || {};
+			const updatedRolePermission = await rolePermissionController.ModifyRolePermission(roleId, permissionId, payload);
+
+			if (!updatedRolePermission) {
+				return res.status(404).json({ message: 'RolePermission khong ton tai.' });
+			}
+
+			return res.json(updatedRolePermission);
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
+
+router.delete(
+	'/rolepermissions/:roleId/:permissionId',
+	validatePositiveIntParam('roleId', 'roleId'),
+	validatePositiveIntParam('permissionId', 'permissionId'),
+	async (req, res, next) => {
+		try {
+			const roleId = req.validated?.roleId ?? Number(req.params.roleId);
+			const permissionId = req.validated?.permissionId ?? Number(req.params.permissionId);
+			const deletedCount = await rolePermissionController.DeleteRolePermission(roleId, permissionId);
+
+			if (!deletedCount) {
+				return res.status(404).json({ message: 'RolePermission khong ton tai.' });
+			}
+
+			return res.json({ message: 'Xoa role-permission thanh cong.' });
+		} catch (error) {
+			return next(error);
+		}
+	}
+);
 
 module.exports = router;
