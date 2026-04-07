@@ -274,10 +274,31 @@ exports.deleteUser = async (id) => {
     const safeId = Number(id);
 
     const deletedCount = await withTransaction(async (conn) => {
+        await conn.query(
+            `DELETE lp
+             FROM lesson_progress lp
+             INNER JOIN enrollment e ON e.EnrollmentID = lp.EnrollmentID
+             WHERE e.UserID = ?`,
+            [safeId]
+        );
+
+        await conn.query('DELETE FROM enrollment WHERE UserID = ?', [safeId]);
+
+        await conn.query(
+            `DELETE od
+             FROM order_details od
+             INNER JOIN orders o ON o.OrderID = od.OrderID
+             WHERE o.UserID = ?`,
+            [safeId]
+        );
+
+        await conn.query('DELETE FROM orders WHERE UserID = ?', [safeId]);
+
         const userRoleTable = await resolveUserRoleTable(conn, { createIfMissing: false });
         if (userRoleTable) {
             await conn.query(`DELETE FROM ${userRoleTable} WHERE UserID = ?`, [safeId]);
         }
+
         const [result] = await conn.query('DELETE FROM users WHERE UserID = ?', [safeId]);
         return result.affectedRows;
     });

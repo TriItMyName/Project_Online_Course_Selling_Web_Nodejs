@@ -1262,6 +1262,29 @@ label a {
     position: relative;
 }
 
+.modal-detail-bottom-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-order-delete {
+    background-color: #dc2626;
+    border: 1px solid #b91c1c;
+}
+
+.btn-order-delete:hover {
+    background-color: #b91c1c;
+}
+
+.btn-order-delete::before {
+    content: "\f1f8";
+    font-family: "Font Awesome 6 Free";
+    position: absolute;
+    font-weight: 900;
+    left: 22px;
+}
+
 .status-complete {
     background-color: #27ae60;
     color: #fff;

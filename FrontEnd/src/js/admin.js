@@ -1480,7 +1480,8 @@ async function deleteAccount(id) {
             });
             if (response.ok) {
                 toast({ title: 'Success', message: 'Xoa nguoi dung thanh cong!', type: 'success', duration: 3000 });
-                showUser();
+                await showUser();
+                await updateDashboard();
             } else {
                 console.error('Loi khi xoa nguoi dung:', await response.text());
             }
@@ -1680,6 +1681,42 @@ async function changeStatus(id, el) {
     }
 }
 
+async function deleteOrder(id, shouldCloseDetailModal = false) {
+    if (!id) {
+        alert('Khong tim thay ma don hang de xoa.');
+        return;
+    }
+
+    if (!confirm('Ban co chac muon xoa don hang nay?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(apiUrl(`/api/orders/${id}`), {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Khong the xoa don hang.');
+        }
+
+        if (shouldCloseDetailModal) {
+            const detailModal = document.querySelector('.modal.detail-order');
+            if (detailModal) {
+                detailModal.classList.remove('open');
+            }
+        }
+
+        toast({ title: 'Success', message: 'Xoa don hang thanh cong!', type: 'success', duration: 3000 });
+        await findOrder();
+        await updateDashboard();
+    } catch (error) {
+        console.error('Loi khi xoa don hang:', error);
+        alert('Khong the xoa don hang. Vui long thu lai.');
+    }
+}
+
 // Format Date
 function formatDate(date) {
     if (!date) return "Khong xac dinh"; // Tra ve gia tri mac dinh neu khong co ngay
@@ -1854,6 +1891,7 @@ async function detailOrder(id) {
             </div>
             <div class="modal-detail-bottom-right">
                 <button class="modal-detail-btn ${classDetailBtn}" onclick="changeStatus('${getOrderId(order)}', this)">${textDetailBtn}</button>
+                <button class="modal-detail-btn btn-order-delete" onclick="deleteOrder('${getOrderId(order)}', true)">Xoa don</button>
             </div>`;
 
             // Hien thi modal chi tiet don hang
