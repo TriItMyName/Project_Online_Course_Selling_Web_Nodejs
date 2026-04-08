@@ -3,6 +3,87 @@ function apiUrl(path) {
     return `${API_BASE}${path}`;
 }
 
+function getStoredAuthHeader() {
+    const savedHeader = String(localStorage.getItem('authHeader') || '').trim();
+    if (savedHeader) {
+        return savedHeader;
+    }
+
+    const token = String(localStorage.getItem('authToken') || '').trim();
+    if (!token) {
+        return '';
+    }
+
+    const tokenType = String(localStorage.getItem('authTokenType') || 'Bearer').trim() || 'Bearer';
+    return `${tokenType} ${token}`;
+}
+
+function readLoggedInUser() {
+    try {
+        return JSON.parse(localStorage.getItem('loggedInUser') || 'null');
+    } catch {
+        return null;
+    }
+}
+
+function clearAuthStorage() {
+    localStorage.removeItem('loggedInUser');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authTokenType');
+    localStorage.removeItem('authTokenExpiresAt');
+    localStorage.removeItem('authHeader');
+}
+
+function ensureAdminSession() {
+    const user = readLoggedInUser();
+    const authHeader = getStoredAuthHeader();
+    if (user?.role === 'Admin' && authHeader) {
+        return;
+    }
+
+    clearAuthStorage();
+    alert('Ban can dang nhap bang tai khoan Admin de truy cap trang nay.');
+    window.location.href = '/login.html';
+}
+
+function shouldAttachAuthHeader(url) {
+    try {
+        const requestUrl = new URL(url, window.location.origin);
+        const apiOrigin = new URL(API_BASE).origin;
+        return requestUrl.origin === apiOrigin && requestUrl.pathname.startsWith('/api/');
+    } catch {
+        return false;
+    }
+}
+
+ensureAdminSession();
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async function (input, init = {}) {
+    const requestUrl = typeof input === 'string' ? input : String(input?.url || '');
+    const nextInit = { ...init };
+
+    if (shouldAttachAuthHeader(requestUrl)) {
+        const authHeader = getStoredAuthHeader();
+        if (authHeader) {
+            const headers = new Headers(nextInit.headers || (input instanceof Request ? input.headers : undefined));
+            if (!headers.has('Authorization')) {
+                headers.set('Authorization', authHeader);
+            }
+            nextInit.headers = headers;
+        }
+    }
+
+    const response = await nativeFetch(input, nextInit);
+    if (shouldAttachAuthHeader(requestUrl) && (response.status === 401 || response.status === 403)) {
+        clearAuthStorage();
+        alert('Phien dang nhap het han hoac ban khong co quyen Admin. Vui long dang nhap lai.');
+        window.location.href = '/login.html';
+    }
+
+    return response;
+};
+
 function getCategoryId(category) {
     return category?.id ?? category?.CategoryID ?? null;
 }

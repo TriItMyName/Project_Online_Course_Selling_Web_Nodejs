@@ -1,10 +1,11 @@
 const express = require('express');
 const roleController = require('../controllers/roleController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
 
-router.get('/roles', async (_req, res, next) => {
+router.get('/roles', requireRole('Admin'), async (_req, res, next) => {
 	try {
 		const roles = await roleController.GetAllRoles();
 		return res.json(roles);
@@ -13,7 +14,7 @@ router.get('/roles', async (_req, res, next) => {
 	}
 });
 
-router.get('/roles/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.get('/roles/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const role = await roleController.FindRoleById(id);
@@ -28,7 +29,7 @@ router.get('/roles/:id', validatePositiveIntParam('id', 'id'), async (req, res, 
 	}
 });
 
-router.post('/roles', async (req, res, next) => {
+router.post('/roles', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const role = await roleController.CreateARole(payload);
@@ -38,7 +39,7 @@ router.post('/roles', async (req, res, next) => {
 	}
 });
 
-router.put('/roles/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/roles/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.body || {};
@@ -54,7 +55,7 @@ router.put('/roles/:id', validatePositiveIntParam('id', 'id'), async (req, res, 
 	}
 });
 
-router.delete('/roles/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.delete('/roles/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const deletedCount = await roleController.DeleteRole(id);

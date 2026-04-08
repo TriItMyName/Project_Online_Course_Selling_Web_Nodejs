@@ -1,10 +1,11 @@
 const express = require('express');
 const permissionController = require('../controllers/permissionController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
 
-router.get('/permissions', async (_req, res, next) => {
+router.get('/permissions', requireRole('Admin'), async (_req, res, next) => {
 	try {
 		const permissions = await permissionController.GetAllPermissions();
 		return res.json(permissions);
@@ -13,7 +14,7 @@ router.get('/permissions', async (_req, res, next) => {
 	}
 });
 
-router.get('/permissions/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.get('/permissions/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const permission = await permissionController.FindPermissionById(id);
@@ -28,7 +29,7 @@ router.get('/permissions/:id', validatePositiveIntParam('id', 'id'), async (req,
 	}
 });
 
-router.post('/permissions', async (req, res, next) => {
+router.post('/permissions', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const permission = await permissionController.CreateAPermission(payload);
@@ -38,7 +39,7 @@ router.post('/permissions', async (req, res, next) => {
 	}
 });
 
-router.put('/permissions/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/permissions/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.body || {};
@@ -54,7 +55,7 @@ router.put('/permissions/:id', validatePositiveIntParam('id', 'id'), async (req,
 	}
 });
 
-router.delete('/permissions/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.delete('/permissions/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const deletedCount = await permissionController.DeletePermission(id);

@@ -1,5 +1,6 @@
 const express = require('express');
 const courseController = require('../controllers/courseController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
@@ -38,7 +39,7 @@ router.get('/courses/:id', validatePositiveIntParam('id', 'id'), async (req, res
 	}
 });
 
-router.post('/courses', async (req, res, next) => {
+router.post('/courses', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const course = await courseController.CreateACourse(req, payload);
@@ -48,7 +49,7 @@ router.post('/courses', async (req, res, next) => {
 	}
 });
 
-router.put('/courses/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/courses/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.body || {};
@@ -64,7 +65,7 @@ router.put('/courses/:id', validatePositiveIntParam('id', 'id'), async (req, res
 	}
 });
 
-router.delete('/courses/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.delete('/courses/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const deletedCount = await courseController.DeleteCourse(id);

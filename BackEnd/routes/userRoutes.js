@@ -1,5 +1,6 @@
 const express = require('express');
 const userController = require('../controllers/userController');
+const { requireRole } = require('../middleware/auth');
 const {
 	validatedResult,
 	CreateUserValidator,
@@ -9,7 +10,7 @@ const {
 
 const router = express.Router();
 
-router.get('/users', async (req, res, next) => {
+router.get('/users', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const users = await userController.GetAllUsers();
 		return res.json(users);
@@ -18,7 +19,7 @@ router.get('/users', async (req, res, next) => {
 	}
 });
 
-router.get('/users/:id', validateUserIdParam, async (req, res, next) => {
+router.get('/users/:id', requireRole('Admin'), validateUserIdParam, async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const user = await userController.FindUserById(id);
@@ -33,7 +34,7 @@ router.get('/users/:id', validateUserIdParam, async (req, res, next) => {
 	}
 });
 
-router.post('/users', CreateUserValidator, validatedResult, async (req, res, next) => {
+router.post('/users', requireRole('Admin'), CreateUserValidator, validatedResult, async (req, res, next) => {
 	try {
 		const payload = req.validated?.body || req.body;
 		const newUser = await userController.CreateAnUser(payload);
@@ -43,7 +44,7 @@ router.post('/users', CreateUserValidator, validatedResult, async (req, res, nex
 	}
 });
 
-router.put('/users/:id', validateUserIdParam, ModifyUserValidator, validatedResult, async (req, res, next) => {
+router.put('/users/:id', requireRole('Admin'), validateUserIdParam, ModifyUserValidator, validatedResult, async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.validated?.body || req.body;
@@ -59,7 +60,7 @@ router.put('/users/:id', validateUserIdParam, ModifyUserValidator, validatedResu
 	}
 });
 
-router.delete('/users/:id', validateUserIdParam, async (req, res, next) => {
+router.delete('/users/:id', requireRole('Admin'), validateUserIdParam, async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const deletedCount = await userController.DeleteUser(id);

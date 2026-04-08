@@ -1,5 +1,6 @@
 const express = require('express');
 const categoryController = require('../controllers/categoryController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
@@ -28,7 +29,7 @@ router.get('/categories/:id', validatePositiveIntParam('id', 'id'), async (req, 
 	}
 });
 
-router.post('/categories', async (req, res, next) => {
+router.post('/categories', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const category = await categoryController.CreateACategory(payload);
@@ -38,7 +39,7 @@ router.post('/categories', async (req, res, next) => {
 	}
 });
 
-router.put('/categories/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/categories/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.body || {};
@@ -54,7 +55,7 @@ router.put('/categories/:id', validatePositiveIntParam('id', 'id'), async (req, 
 	}
 });
 
-router.delete('/categories/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.delete('/categories/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const deletedCount = await categoryController.DeleteCategory(id);

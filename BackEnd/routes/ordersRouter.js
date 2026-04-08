@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/ordersController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 const {
 	emitOrderCreated,
@@ -8,7 +9,7 @@ const {
 	emitOrderDeleted,
 } = require('../utils/socket');
 
-router.get('/orders', async (_req, res, next) => {
+router.get('/orders', requireRole('Admin'), async (_req, res, next) => {
 	try {
 		const orders = await orderController.GetAllOrders();
 		return res.json(orders);
@@ -27,7 +28,7 @@ router.get('/orders/user/:userId', validatePositiveIntParam('userId', 'userId'),
 	}
 });
 
-router.get('/orders/filter', async (req, res, next) => {
+router.get('/orders/filter', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const filters = {
 			status: req.query.status,
@@ -67,7 +68,7 @@ router.get('/orders/:id', validatePositiveIntParam('id', 'id'), async (req, res,
 	}
 });
 
-router.post('/orders', async (req, res, next) => {
+router.post('/orders', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const order = await orderController.CreateOrder(payload);
@@ -78,7 +79,7 @@ router.post('/orders', async (req, res, next) => {
 	}
 });
 
-router.put('/orders/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/orders/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const payload = req.body || {};
@@ -95,7 +96,7 @@ router.put('/orders/:id', validatePositiveIntParam('id', 'id'), async (req, res,
 	}
 });
 
-router.delete('/orders/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.delete('/orders/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const existingOrder = await orderController.FindOrderById(id);
@@ -115,7 +116,7 @@ router.delete('/orders/:id', validatePositiveIntParam('id', 'id'), async (req, r
 	}
 });
 
-router.get('/orders-with-users', async (_req, res, next) => {
+router.get('/orders-with-users', requireRole('Admin'), async (_req, res, next) => {
 	try {
 		const orders = await orderController.GetAllOrdersWithUserName();
 		return res.json(orders);
@@ -124,7 +125,7 @@ router.get('/orders-with-users', async (_req, res, next) => {
 	}
 });
 
-router.get('/orders-with-user/:id', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.get('/orders-with-user/:id', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const order = await orderController.GetOrderWithUserNameById(id);
@@ -139,7 +140,7 @@ router.get('/orders-with-user/:id', validatePositiveIntParam('id', 'id'), async 
 	}
 });
 
-router.put('/orders/:id/status', validatePositiveIntParam('id', 'id'), async (req, res, next) => {
+router.put('/orders/:id/status', requireRole('Admin'), validatePositiveIntParam('id', 'id'), async (req, res, next) => {
 	try {
 		const id = req.validated?.id ?? Number(req.params.id);
 		const status = req.body?.status ?? req.body?.Status;

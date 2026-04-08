@@ -1,10 +1,11 @@
 const express = require('express');
 const userRoleController = require('../controllers/userroleController');
+const { requireRole } = require('../middleware/auth');
 const { validatePositiveIntParam } = require('../utils/validator');
 
 const router = express.Router();
 
-router.get('/userroles', async (_req, res, next) => {
+router.get('/userroles', requireRole('Admin'), async (_req, res, next) => {
 	try {
 		const userRoles = await userRoleController.GetAllUserRoles();
 		return res.json(userRoles);
@@ -15,6 +16,7 @@ router.get('/userroles', async (_req, res, next) => {
 
 router.get(
 	'/userroles/:userId/:roleId',
+	requireRole('Admin'),
 	validatePositiveIntParam('userId', 'userId'),
 	validatePositiveIntParam('roleId', 'roleId'),
 	async (req, res, next) => {
@@ -34,7 +36,7 @@ router.get(
 	}
 );
 
-router.post('/userroles', async (req, res, next) => {
+router.post('/userroles', requireRole('Admin'), async (req, res, next) => {
 	try {
 		const payload = req.body || {};
 		const userRole = await userRoleController.CreateUserRole(payload);
@@ -46,6 +48,7 @@ router.post('/userroles', async (req, res, next) => {
 
 router.put(
 	'/userroles/:userId/:roleId',
+	requireRole('Admin'),
 	validatePositiveIntParam('userId', 'userId'),
 	validatePositiveIntParam('roleId', 'roleId'),
 	async (req, res, next) => {
@@ -68,6 +71,7 @@ router.put(
 
 router.delete(
 	'/userroles/:userId/:roleId',
+	requireRole('Admin'),
 	validatePositiveIntParam('userId', 'userId'),
 	validatePositiveIntParam('roleId', 'roleId'),
 	async (req, res, next) => {

@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 
 const SECRET_KEY = process.env.SECRET_KEY || 'tri16102004';
-const AUTH_REQUIRED = String(process.env.AUTH_REQUIRED || 'false').toLowerCase() === 'true';
 
 function signToken(user) {
   return jwt.sign(
@@ -45,9 +44,6 @@ function optionalAuth(req, _res, next) {
 function requireAuth(req, res, next) {
   const decoded = parseToken(req);
   if (!decoded) {
-    if (!AUTH_REQUIRED) {
-      return next();
-    }
     return res.status(401).json({ message: 'Unauthorized' });
   }
   req.user = {
@@ -63,17 +59,11 @@ function requireRole(...roles) {
   return (req, res, next) => {
     const decoded = req.user || parseToken(req);
     if (!decoded) {
-      if (!AUTH_REQUIRED) {
-        return next();
-      }
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
     const role = decoded.role || req.user?.role;
     if (!roles.includes(role)) {
-      if (!AUTH_REQUIRED) {
-        return next();
-      }
       return res.status(403).json({ message: 'Forbidden' });
     }
     return next();
