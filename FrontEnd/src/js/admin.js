@@ -166,7 +166,7 @@ function getOrderUserName(order) {
 }
 
 function statusLabelFromEnum(status) {
-    return status === 'SUCCESS' ? 'Đã xử lý' : status === 'PENDING' ? 'Chưa xử lý' : 'That bai';
+    return status === 'SUCCESS' ? 'Đã xử lý' : status === 'PENDING' ? 'Chưa xử lý' : 'Thất bại';
 }
 
 const ORDER_NOTIFY_POLLING_INTERVAL_MS = 10000;

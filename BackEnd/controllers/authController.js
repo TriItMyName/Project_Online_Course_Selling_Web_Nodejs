@@ -146,7 +146,7 @@ exports.checkLogin = async (req, res, next) => {
       return res.status(400).json({ message: 'Email va mat khau la bat buoc.' });
     }
 
-     const userRoleTable = await resolveUserRoleTable();
+    const userRoleTable = await resolveUserRoleTable();
 
     const rows = await query(
       `SELECT u.UserID, u.UserName, u.Email, u.Password, u.Status, r.RoleName
