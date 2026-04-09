@@ -52,6 +52,11 @@ const io = new Server(httpServer, {
 setSocketServer(io);
 
 io.on('connection', (socket) => {
+  const connectedClients = io.of('/').sockets.size;
+  if (connectedClients > 1) {
+    console.log('Co nguoi ket noi');
+  }
+
   socket.on('disconnect', () => {
     // Intentionally kept silent to avoid noisy logs in development.
   });
