@@ -24,7 +24,7 @@ const lessonRoutes = require('./routes/lessonRoutes'); // Đường dẫn tới 
 const lessonProgressRoutes = require('./routes/lesson_progressRoutes'); // Đường dẫn tới file lesson_progressRoutes.js
 const paymentRoutes = require('./routes/paymentRoutes');
 
-// Function để tự động lấy địa chỉ IPv4 local
+
 function getLocalIPv4() {
   const interfaces = os.networkInterfaces();
   for (const ifName of Object.keys(interfaces)) {
