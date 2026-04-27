@@ -3,7 +3,7 @@ services:
     build: 
       context: ${BACKEND_PATH:-../../BackEnd}
       dockerfile: Dockerfile
-    container_name: my-backend-app
+    container_name: my-backend-nodejs-app
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -15,7 +15,7 @@ services:
 
   db:
     image: mysql:8.0
-    container_name: mysql-db
+    container_name: mysql-db-nodejs
     restart: always
     env_file:
       - ../../BackEnd/.env

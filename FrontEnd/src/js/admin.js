@@ -582,6 +582,24 @@ function vnd(price) {
     return parseFloat(price).toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
 }
 
+function formatDate(dateString) {
+    if (!dateString) {
+        return "Không xác định";
+    }
+
+    // Handles formats like "YYYY-MM-DD HH:mm:ss" from the database
+    const date = new Date(String(dateString).replace(' ', 'T'));
+
+    if (isNaN(date.getTime())) {
+        return "Ngày không hợp lệ";
+    }
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+}
+
 // Cap nhat bang dieu khien
 async function updateDashboard() {
     try {
