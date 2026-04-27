@@ -180,6 +180,8 @@ let orderSocket = null;
 let orderSocketReconnectTimer = null;
 let socketClientLoaderPromise = null;
 let isOrderSocketConnected = false;
+let currentEditingCourseId = null;
+let currentEditingUserId = null;
 
 function normalizeOrderId(order) {
     const rawId = getOrderId(order);
@@ -498,13 +500,12 @@ for (let i = 0; i < sidebars.length; i++) {
 }
 
 const closeBtn = document.querySelectorAll('.section');
-console.log(closeBtn[0])
 for (let i = 0; i < closeBtn.length; i++) {
     closeBtn[i].addEventListener('click', (e) => {
-        sidebar.classList.add("open");
+        // Close sidebar when clicking on the main content area
+        sidebar.classList.remove("open");
     })
 }
-
 
 // Get amount categorie
 async function getAmountCourses() {
@@ -515,8 +516,6 @@ async function getAmountCourses() {
                 'Content-Type': 'application/json',
             },
         });
-
-        console.log('Phan hoi tu API:', response);
 
         if (response.ok) {
             const courses = await response.json();
@@ -576,21 +575,6 @@ async function getMoney() {
     }
 }
 
-
-// Dinh nghia ham formatDate
-function formatDate(date) {
-    if (!date) return "Khong xac dinh"; // Tra ve gia tri mac dinh neu khong co ngay
-
-    const formattedDate = date.replace(" ", "T"); // Chuyen doi dinh dang
-    const fm = new Date(formattedDate);
-    if (isNaN(fm)) return "Khong xac dinh"; // Tra ve gia tri mac dinh neu ngay khong hop le
-
-    const yyyy = fm.getFullYear();
-    const mm = fm.getMonth() + 1;
-    const dd = fm.getDate();
-    return `${dd < 10 ? "0" + dd : dd}/${mm < 10 ? "0" + mm : mm}/${yyyy}`;
-}
-
 function vnd(price) {
     if (price == null || price === undefined) {
         return "Khong xac dinh"; // Gia tri mac dinh neu `price` khong hop le
@@ -602,8 +586,6 @@ function vnd(price) {
 async function updateDashboard() {
     try {
         const amountUser = await getAmountUser();
-        console.log('So luong nguoi dung khong phai Admin:', amountUser);
-
         // Kiem tra neu phan tu ton tai truoc khi cap nhat
         const amountUserElement = document.getElementById("amount-user");
         if (amountUserElement) {
@@ -617,7 +599,6 @@ async function updateDashboard() {
 
     try {
         const amountCourses = await getAmountCourses();
-        console.log('So luong khoa hoc:', amountCourses);
         const amountCoursesElement = document.getElementById("amount-categorie");
         if (amountCoursesElement) {
             amountCoursesElement.innerHTML = amountCourses;
@@ -631,7 +612,6 @@ async function updateDashboard() {
 
     try {
         const amountMoney = await getMoney();
-        console.log('Tong tien:', amountMoney);
         const amountMoneyElement = document.getElementById("amount-money");
         if (amountMoneyElement) {
             amountMoneyElement.innerHTML = vnd(amountMoney);
@@ -863,16 +843,6 @@ async function cancelSearchCourses() {
     } catch (error) {
         console.error('Loi khi goi API:', error);
     }
-}
-
-function createId(arr) {
-    let id = arr.length;
-    let check = arr.find((item) => item.id == id);
-    while (check != null) {
-        id++;
-        check = arr.find((item) => item.id == id);
-    }
-    return id;
 }
 
 let pendingLessons = [];
@@ -1181,7 +1151,6 @@ if (lessonListContainer) {
 
 // Xoa san pham 
 async function deletecategorie(id) {
-    console.log("ID khóa học cần xóa:", id); // Kiem tra ID
     if (!id) {
         console.error("ID không hợp lệ.");
         return;
@@ -1212,7 +1181,7 @@ async function editcategorie(id) {
             const course = await response.json();
 
             // Luu ID cua khoa hoc hien tai vao bien toan cuc
-            indexCur = id;
+            currentEditingCourseId = id;
 
             // Hien thi giao dien chinh sua
             document.querySelectorAll(".add-categorie-e").forEach(item => {
@@ -1242,14 +1211,11 @@ async function editcategorie(id) {
     }
 }
 
-
-var indexCur;
-
 let btnUpdatecategorieIn = document.getElementById("update-categorie-button");
 btnUpdatecategorieIn.addEventListener("click", async (e) => {
     e.preventDefault();
 
-    if (!indexCur) {
+    if (!currentEditingCourseId) {
         console.error("Không tìm thấy ID của khóa học cần cập nhật.");
         return;
     }
@@ -1271,17 +1237,15 @@ btnUpdatecategorieIn.addEventListener("click", async (e) => {
         image: filePath,
     };
 
-    console.log("Du lieu gui len backend:", updatedCourse);
-
     try {
-        const response = await fetch(apiUrl(`/api/courses/${indexCur}`), {
+        const response = await fetch(apiUrl(`/api/courses/${currentEditingCourseId}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedCourse),
         });
         if (response.ok) {
             try {
-                await savePendingLessons(indexCur);
+                await savePendingLessons(currentEditingCourseId);
             } catch (lessonError) {
                 console.error(lessonError);
                 alert('Cập nhật khóa học thành công nhưng thêm bài học thất bại. Vui lòng kiểm tra lại.');
@@ -1301,15 +1265,6 @@ btnUpdatecategorieIn.addEventListener("click", async (e) => {
     }
 });
 
-// Ham lay duong dan anh tu thuoc tinh src
-function getPathImage(src) {
-    if (!src) {
-        console.error("Đường dẫn ảnh không hợp lệ.");
-        return "";
-    }
-    return src;
-}
-
 async function addNewCourse() {
     const newCourse = {
         courseName: document.getElementById("ten-khoa-hoc").value,
@@ -1318,8 +1273,6 @@ async function addNewCourse() {
         price: parseFloat(document.getElementById("gia-moi").value || 0),
         image: document.querySelector(".upload-image-preview").dataset.filePath || "",
     };
-
-    console.log("Du lieu gui len backend:", newCourse);
 
     try {
         const response = await fetch(apiUrl('/api/courses'), {
@@ -1360,6 +1313,7 @@ btnAddcategorieIn.addEventListener("click", (e) => {
 
 document.querySelector(".modal-close.categorie-form").addEventListener("click", () => {
     setDefaultValue();
+    currentEditingCourseId = null;
 })
 
 function setDefaultValue() {
@@ -1382,7 +1336,7 @@ btnAddcategorie.addEventListener("click", () => {
     document.querySelectorAll(".edit-categorie-e").forEach(item => {
         item.style.display = "none";
     })
-    indexCur = null;
+    currentEditingCourseId = null;
     pendingLessons = [];
     existingLessons = [];
     resetLessonInputFields();
@@ -1426,6 +1380,7 @@ let updateAccount = document.getElementById("btn-update-account")
 
 document.querySelector(".modal.signup .modal-close").addEventListener("click", () => {
     signUpFormReset();
+    currentEditingUserId = null;
 })
 
 function openCreateAccount() {
@@ -1475,8 +1430,10 @@ async function showUser() {
         if (usersResponse.ok) {
             const users = await usersResponse.json();
 
-            // Tranh phu thuoc /api/roles dang tra payload de quy qua sau.
-            let nonAdminUsers = users.filter(user => !['admin'].includes(String(getUserName(user)).toLowerCase()));
+            // Correctly filter out Admin users based on their role property
+            let nonAdminUsers = users.filter(user => {
+                return String(user?.role || 'Student').toLowerCase() !== 'admin';
+            });
 
             const keyword = String(document.getElementById("form-search-user")?.value || "").trim().toLowerCase();
             if (keyword) {
@@ -1535,7 +1492,9 @@ async function cancelSearchUser() {
         if (usersResponse.ok) {
             const users = await usersResponse.json();
 
-            const nonAdminUsers = users.filter(user => !['admin'].includes(String(getUserName(user)).toLowerCase()));
+            const nonAdminUsers = users.filter(user => {
+                return String(user?.role || 'Student').toLowerCase() !== 'admin';
+            });
 
             // Hien thi danh sach nguoi dung khong phai Admin
             showUserArr(nonAdminUsers);
@@ -1573,14 +1532,13 @@ async function deleteAccount(id) {
 }
 
 async function editAccount(id) {
-    console.log("ID cua tai khoan:", id);
     try {
         const response = await fetch(apiUrl(`/api/users/${id}`));
         if (response.ok) {
             const account = await response.json();
 
             // Luu ID cua tai khoan hien tai vao bien toan cuc
-            indexFlag = id;
+            currentEditingUserId = id;
 
             // Hien thi giao dien chinh sua
             document.querySelector(".signup").classList.add("open");
@@ -1588,7 +1546,7 @@ async function editAccount(id) {
             document.querySelectorAll(".edit-account-e").forEach(item => item.style.display = "block");
 
             // Gan gia tri vao form chinh sua
-            document.getElementById("fullname").value = account.UserName || "";
+            document.getElementById("fullname").value = getUserName(account);
             document.getElementById("fullname").value = getUserName(account);
             document.getElementById("email").value = getUserEmail(account);
 
@@ -1606,7 +1564,7 @@ async function editAccount(id) {
 updateAccount.addEventListener("click", async (e) => {
     e.preventDefault();
 
-    if (!indexFlag) {
+    if (!currentEditingUserId) {
         console.error("Khong tim thay ID cua nguoi dung can cap nhat.");
         return;
     }
@@ -1618,7 +1576,7 @@ updateAccount.addEventListener("click", async (e) => {
     };
 
     try {
-        const response = await fetch(apiUrl(`/api/users/${indexFlag}`), {
+        const response = await fetch(apiUrl(`/api/users/${currentEditingUserId}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedAccount),
@@ -1798,20 +1756,6 @@ async function deleteOrder(id, shouldCloseDetailModal = false) {
     }
 }
 
-// Format Date
-function formatDate(date) {
-    if (!date) return "Khong xac dinh"; // Tra ve gia tri mac dinh neu khong co ngay
-
-    const formattedDate = date.replace(" ", "T"); // Chuyen doi dinh dang
-    const fm = new Date(formattedDate);
-    if (isNaN(fm)) return "Khong xac dinh"; // Tra ve gia tri mac dinh neu ngay khong hop le
-
-    const yyyy = fm.getFullYear();
-    const mm = fm.getMonth() + 1;
-    const dd = fm.getDate();
-    return `${dd < 10 ? "0" + dd : dd}/${mm < 10 ? "0" + mm : mm}/${yyyy}`;
-}
-
 // Show order
 async function showOrder(existingOrders = null) {
     let orderHtml = "";
@@ -1828,53 +1772,38 @@ async function showOrder(existingOrders = null) {
             orders = await response.json();
         }
 
-            console.log("Danh sach don hang tu API:", orders); // Kiem tra du lieu tra ve tu API
+        if (orders.length === 0) {
+            orderHtml = `<td colspan="6">Khong co du lieu</td>`;
+        } else {
+            orders.forEach((item) => {
+                const statusEnum = getOrderStatus(item);
+                const isDone = statusEnum === 'SUCCESS';
+                let status = isDone
+                    ? `<span class="status-complete">Đã xử lý</span>`
+                    : `<span class="status-no-complete">Chưa xử lý</span>`;
+                let date = formatDate(getOrderDate(item));
+                let userName = getOrderUserName(item);
+                const orderId = getOrderId(item);
 
-            if (orders.length === 0) {
-                orderHtml = `<td colspan="6">Khong co du lieu</td>`;
-            } else {
-                orders.forEach((item) => {
-                    const statusEnum = getOrderStatus(item);
-                    const isDone = statusEnum === 'SUCCESS';
-                    let status = isDone
-                        ? `<span class="status-complete">Đã xử lý</span>`
-                        : `<span class="status-no-complete">Chưa xử lý</span>`;
-                    let date = formatDate(getOrderDate(item));
-                    let userName = getOrderUserName(item);
-                    const orderId = getOrderId(item);
-
-                    orderHtml += `
-                    <tr>
-                        <td>${orderId}</td>
-                        <td>${userName}</td>
-                        <td>${date}</td>
-                        <td>${vnd(getOrderTotal(item))}</td>
-                        <td>${status}</td>
-                        <td class="control">
-                            <button class="btn-detail" onclick="detailOrder('${orderId}')"><i class="fa-solid fa-eye"></i> Chi tiet</button>
-                        </td>
-                    </tr>`;
-                });
-            }
+                orderHtml += `
+                <tr>
+                    <td>${orderId}</td>
+                    <td>${userName}</td>
+                    <td>${date}</td>
+                    <td>${vnd(getOrderTotal(item))}</td>
+                    <td>${status}</td>
+                    <td class="control">
+                        <button class="btn-detail" onclick="detailOrder('${orderId}')"><i class="fa-solid fa-eye"></i> Chi tiet</button>
+                    </td>
+                </tr>`;
+            });
+        }
     } catch (error) {
         console.error('Loi khi goi API:', error);
         orderHtml = `<td colspan="6">Khong co du lieu</td>`;
     }
 
     document.getElementById("showOrder").innerHTML = orderHtml;
-}
-
-// Get Order Details
-function getOrderDetails(madon) {
-    let orderDetails = localStorage.getItem("orderDetails") ?
-        JSON.parse(localStorage.getItem("orderDetails")) : [];
-    let ctDon = [];
-    orderDetails.forEach((item) => {
-        if (item.madon == madon) {
-            ctDon.push(item);
-        }
-    });
-    return ctDon;
 }
 
 // Show Order Detail
@@ -1886,9 +1815,6 @@ async function detailOrder(id) {
         if (orderResponse.ok && detailsResponse.ok) {
             const order = await orderResponse.json();
             let details = await detailsResponse.json();
-
-            console.log("Order data:", order);
-            console.log("Order details:", details);
 
             // Kiem tra neu `details` khong phai la mang, chuyen doi thanh mang
             if (!Array.isArray(details)) {
@@ -1902,7 +1828,6 @@ async function detailOrder(id) {
                 const courseResponse = await fetch(apiUrl(`/api/courses/${detailCourseId}`));
                 if (courseResponse.ok) {
                     const course = await courseResponse.json();
-                    console.log("Thong tin khoa hoc:", course); // Kiem tra du lieu tra ve
                     return course;
                 } else {
                     console.error(`Loi khi lay thong tin khoa hoc voi CourseID: ${detailCourseId}`);
@@ -1917,8 +1842,6 @@ async function detailOrder(id) {
             let spHtml = `<div class="modal-detail-left"><div class="order-item-group">`;
             details.forEach((item, index) => {
                 const course = courses[index];
-                console.log("Chi tiet don hang:", item);
-                console.log("Gia tien:", item.Price); // Lay thong tin khoa hoc tuong ung
                 if (course) {
                     spHtml += `
                     <div class="order-product">
@@ -2175,7 +2098,3 @@ window.onload = async function () {
     startOrderNotificationPolling();
     initOrderRealtimeSocket();
 };
-
-
-
-

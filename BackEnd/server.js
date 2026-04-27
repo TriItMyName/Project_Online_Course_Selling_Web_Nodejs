@@ -1,10 +1,17 @@
-require('dotenv').config(); // if you use .env
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+
+// Load .env.local for local overrides, otherwise load .env
+if (fs.existsSync(path.join(__dirname, '.env.local'))) {
+  require('dotenv').config({ path: '.env.local' });
+} else {
+  require('dotenv').config();
+}
 const morgan = require('morgan');
 const { optionalAuth } = require('./middleware/auth');
 const { setSocketServer } = require('./utils/socket');
@@ -40,7 +47,7 @@ const app = express();
 const httpServer = http.createServer(app);
 const port = process.env.PORT || 3000;
 const hostname = getLocalIPv4();
-const SECRET_KEY = process.env.SECRET_KEY || 'tri16102004';
+const SECRET_KEY = process.env.SECRET_KEY;
 
 const io = new Server(httpServer, {
   cors: {
@@ -48,6 +55,11 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   },
 });
+
+if (!SECRET_KEY) {
+  console.error('FATAL ERROR: SECRET_KEY is not defined in environment variables.');
+  process.exit(1);
+}
 
 setSocketServer(io);
 

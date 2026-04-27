@@ -129,10 +129,10 @@ function getMomoConfig(req) {
     || (frontendBase ? `${frontendBase}/payment-result.html` : 'http://localhost:5000/payment-result.html');
 
   return {
-    partnerCode: process.env.MOMO_PARTNER_CODE || 'MOMO',
-    accessKey: process.env.MOMO_ACCESS_KEY || 'F8BBA842ECF85',
-    secretKey: process.env.MOMO_SECRET_KEY || 'K951B6PE1waDMi640xX08PD3vg6EkVlz',
-    endpoint: process.env.MOMO_ENDPOINT || 'https://test-payment.momo.vn/v2/gateway/api/create',
+    partnerCode: process.env.MOMO_PARTNER_CODE,
+    accessKey: process.env.MOMO_ACCESS_KEY,
+    secretKey: process.env.MOMO_SECRET_KEY,
+    endpoint: process.env.MOMO_ENDPOINT,
     redirectUrl,
     ipnUrl: process.env.MOMO_IPN_URL || `${getBaseUrl(req)}/api/payment/momo/ipn`,
     requestType: process.env.MOMO_REQUEST_TYPE || 'payWithMethod',
